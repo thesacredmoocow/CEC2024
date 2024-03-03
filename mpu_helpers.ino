@@ -29,7 +29,8 @@ VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measure
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
-
+int wraparounds = 0;
+bool prevstate = true;
 
 
 // ================================================================
@@ -40,7 +41,12 @@ volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin h
 void dmpDataReady() {
     mpuInterrupt = true;
 }
-
+/*
+ * expanding:
+.... XAccel      YAccel        ZAccel      XGyro     YGyro     ZGyro
+ [0,0] --> [8572,8581]  [0,0] --> [-5702,-5711] [0,0] --> [1762,1740] [0,0] --> [-273,-273] [0,0] --> [-132,-132] [0,0] --> [-193,-194]
+...
+ */
 // ================================================================
 // ===                      INITIAL SETUP                       ===
 // ================================================================
@@ -63,26 +69,26 @@ void mpu_setup() {
     Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
     // wait for ready
-    Serial.println(F("\nSend any character to begin DMP programming and demo: "));
+    /*Serial.println(F("\nSend any character to begin DMP programming and demo: "));
     while (Serial.available() && Serial.read()); // empty buffer
     while (!Serial.available());                 // wait for data
-    while (Serial.available() && Serial.read()); // empty buffer again
+    while (Serial.available() && Serial.read()); // empty buffer again*/
 
     // load and configure the DMP
     Serial.println(F("Initializing DMP..."));
     devStatus = mpu.dmpInitialize();
 
     // supply your own gyro offsets here, scaled for min sensitivity
-    mpu.setXGyroOffset(220);
-    mpu.setYGyroOffset(76);
-    mpu.setZGyroOffset(-85);
-    mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
+    mpu.setXGyroOffset(-273);
+    mpu.setYGyroOffset(-132);
+    mpu.setZGyroOffset(-193);
+    mpu.setZAccelOffset(1772); // 1688 factory default for my test chip
 
     // make sure it worked (returns 0 if so)
     if (devStatus == 0) {
         // Calibration Time: generate offsets and calibrate our MPU6050
-        mpu.CalibrateAccel(6);
-        mpu.CalibrateGyro(6);
+        mpu.CalibrateAccel(2);
+        mpu.CalibrateGyro(2);
         mpu.PrintActiveOffsets();
         // turn on the DMP, now that it's ready
         Serial.println(F("Enabling DMP..."));
@@ -123,5 +129,17 @@ void mpu_run() {
       mpu.dmpGetGravity(&gravity, &q);
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
       mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+      if(!prevstate && ypr[0] > 0) {
+        if(abs(ypr[0]) > 1.5) {
+          wraparounds--;
+        }
+        prevstate = true;
+      } else if (prevstate && ypr[0] < 0) {
+        if(abs(ypr[0]) > 1.5) {
+          wraparounds++;
+        }
+        prevstate = false;
+      }
+      ypr[0] += wraparounds * 2*3.1415;
     }
 }
